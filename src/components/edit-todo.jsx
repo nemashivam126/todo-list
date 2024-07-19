@@ -2,6 +2,9 @@ import axios from "axios";
 import { useEffect, useState } from "react"
 import { useCookies } from "react-cookie";
 import { useNavigate, useParams, Link } from "react-router-dom";
+import Navbar from "./navbar";
+import BSToast from "./toast";
+import BackdropSpinner from "./backdropSpinner";
 
 const EditTodo =()=> {
     const [data, setData] = useState([]);
@@ -9,12 +12,15 @@ const EditTodo =()=> {
     const navigate = useNavigate();
     const [cookies, ,removeCookie] = useCookies()
     const [user, setUser] = useState('');
+    const [showToast, setShowToast] = useState(false);
+    const [toastMsg, setToastMsg] = useState('You are using todo application by Shivam Nema! Thank you.');
+    const [toastBg, setToastBg] = useState('primary');
+    const [icon, setIcon] = useState('');
+    const [loader, setLoader] = useState(false);
 
     const handleSubmit = (e) =>{
         e.preventDefault();
-        console.log(data);
         UpdateData();
-        navigate('/todos');
     }
     const handleTitleChange=(e)=>{
         setData((prevdata)=>({
@@ -28,25 +34,61 @@ const EditTodo =()=> {
             Description:e.target.value
         }))
     }
-    const UpdateData = () => {
-        axios({
-            method: 'put',
-            url: `http://127.0.0.1:5000/todos/update/${params.id}`,
-            data: data
-        }).then(response => {
+
+    const handleShowToast = () => {
+        setShowToast(true);
+    };
+    
+    const handleCloseToast = () => {
+        setShowToast(false);
+    };
+
+    const UpdateData = async () => {
+        setLoader(true);
+        try {
+            // Update data request
+            const response = await axios({
+                method: 'put',
+                url: `https://todo-backend-six-jet.vercel.app/todos/update/${params.id}`,
+                data: data,
+                headers: {
+                    Token: `Bearer ${localStorage.getItem('token')}` // Set Authorization header
+                }
+            });
+    
             if (response.status === 200) {
-              alert('Data updated successfully!');
+                setToastMsg('Data updated successfully!');
+                setIcon('bi bi-check-circle-fill');
+                setToastBg('success');
+                handleShowToast();
+                setTimeout(() => {
+                    navigate('/todos');
+                }, 1000);
             }
-        })
-    }
+        } catch (error) {
+            console.error(error);
+            setToastMsg('Failed to update data.');
+            setIcon('bi bi-exclamation-triangle-fill');
+            setToastBg('danger');
+            handleShowToast();
+        } finally {
+            setLoader(false);
+        }
+    };
 
     const loadtodo = () => {
+        setLoader(true);
         axios({
             method: 'get',
-            url: `http://localhost:5000/todos/${params.id}`
+            url: `https://todo-backend-six-jet.vercel.app/todos/${params.id}`,
+            headers: {
+                Token: `Bearer ${localStorage.getItem('token')}` // Set Authorization header
+            }
         }).then((response)=>{
-            setData(response.data[0])
+            setData(response.data)
             console.log(response.data);
+        }).finally(() => {
+            setLoader(false);
         })
     }
 
@@ -64,18 +106,17 @@ const EditTodo =()=> {
         e.preventDefault()
         if('username' in cookies){
             removeCookie('username');
+            removeCookie('user-id');
+            localStorage.removeItem('token');
             navigate("/login");
         }
     }
 
     return(
         <div>
-            <div>
-                <nav className="d-flex justify-content-between align-items-center bg-dark text-white p-2">
-                    <Link style={{textDecoration:"none", color:"white"}} to={'/todos'}><h1 className="mx-2 bi bi-pen">TODO's</h1></Link>
-                    <div className="d-flex"><h4 className="me-3">{user}</h4><button onClick={handleSignOut} className="btn btn-danger mx-2">Signout</button></div>
-                </nav>
-            </div>
+            <div style={{position: 'relative', marginBottom: '100px', zIndex: 1}}>
+                    <Navbar search={false} handleSignOut={handleSignOut} user={user} />
+                </div>
             <div className="d-flex justify-content-center mt-5">
                 <form onSubmit={handleSubmit} className="bg-dark text-white p-4 rounded-3 ">
                     <div className="form-group">
@@ -92,6 +133,14 @@ const EditTodo =()=> {
                 </form>
             </div>
             <div className="text-center mt-5"><Link to='/todos'><button className="btn btn-secondary">Back</button></Link></div>
+            <BSToast
+                bgColor={toastBg}
+                icon={icon}
+                show={showToast}
+                onClose={handleCloseToast}
+                message={toastMsg}
+            />
+            <BackdropSpinner show={loader} onHide={loader} />
         </div>
     )
 }

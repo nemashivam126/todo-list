@@ -2,25 +2,48 @@ import axios from "axios";
 import { useEffect, useState } from "react";
 import { useCookies } from "react-cookie";
 import { Link, useNavigate } from "react-router-dom";
+import '../styles/style.css'; // Import the CSS file
+import Navbar from "./navbar";
+import BSToast from "./toast";
+import BackdropSpinner from "./backdropSpinner";
+import CustomModal from "./modalbox";
 
 function TodoList() {
     const [todos, setTodos] = useState([]);
+    const [todosCheck, setTodosCheck] = useState(null);
     const [searchKey, setSearchKey] = useState('');
     const [filteredTodos, setFilteredTodos] = useState([]);
     const [flag, setFlag] = useState(false);
     const navigate = useNavigate();
     const [cookies, ,removeCookie] = useCookies();
     const [user, setUser] = useState('');
+    const [showToast, setShowToast] = useState(false);
+    const [toastMsg, setToastMsg] = useState('You are using todo application by Shivam Nema! Thank you.');
+    const [toastBg, setToastBg] = useState('primary');
+    const [icon, setIcon] = useState('');
+    const [loader, setLoader] = useState(false);
+    const [deleteAlert, setDeleteAlert] = useState(false);
+    const [deleteTitle, setDeleteTitle] = useState(null);
+    const [todoToDelete, setTodoToDelete] = useState(null);
 
     const loadTodos = () => {
-        axios({
-            method: 'get',
-            url: 'http://localhost:5000/todos'
-        }).then(res => {
-            const todosWithCheckbox = res.data.map(todo => ({ ...todo, isChecked: false }));
+        setLoader(true);
+        axios.get('https://todo-backend-six-jet.vercel.app/todos', {
+            headers: {
+                Token: `Bearer ${localStorage.getItem('token')}` // Set Authorization header
+            }
+        })
+        .then(res => {
+            const todosWithCheckbox = res.data.map(todo => ({ ...todo, isChecked: todo.isComplete }));
             setTodos(todosWithCheckbox);
+            setTodosCheck(todosWithCheckbox);
+        })
+        .catch(error => {
+            console.error("Error loading todos:", error);
+        }).finally(() => {
+            setLoader(false)
         });
-    }
+    };
 
     useEffect(() => {
         if(cookies['username'] === undefined){
@@ -29,23 +52,48 @@ function TodoList() {
             loadTodos();
             setUser(cookies.username)
           }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [cookies, navigate]);
 
-    const DeleteRecord = (id) => {
-        axios({
-            method: "delete",
-            url: `http://localhost:5000/todos/delete/${id}`,
-        }).then(() => {
-            console.log(`deleted ${id}`);
-        });
+    const DeleteRecord = async () => {
+        if (todoToDelete) {
+            setLoader(true);
+            try {
+                await axios({
+                    method: "delete",
+                    url: `https://todo-backend-six-jet.vercel.app/todos/delete/${todoToDelete}`,
+                    headers: {
+                        Token: `Bearer ${localStorage.getItem('token')}` // Set Authorization header
+                    }
+                });
+                console.log(`deleted ${todoToDelete}`);
+                const todoToDeleteItem = todos.find(todo => todo._id === todoToDelete);
+                setTodos(prevTodos => prevTodos.filter(todo => todo._id !== todoToDelete));
+                setFilteredTodos(prevFilteredTodos => prevFilteredTodos.filter(todo => todo._id !== todoToDelete));
+                setToastMsg(todoToDeleteItem ? `Successfully deleted todo: "${todoToDeleteItem.Title}"` : 'Successfully deleted todo.');
+                setIcon('bi bi-trash-fill');
+                setToastBg('danger');
+                loadTodos();
+                handleShowToast();
+            } catch (error) {
+                console.error("Error deleting todo:", error);
+                setToastMsg('Failed to delete todo. Please try again!');
+                setIcon('bi bi-exclamation-triangle-fill'); // Error icon
+                setToastBg('danger'); // Assuming 'error' should be 'danger'
+                handleShowToast();
+            } finally {
+                setLoader(false);
+                setDeleteAlert(false);
+                setTodoToDelete(null); // Clear the todo id
+            }
+        }
     };
 
-    const handleDelete = (id) => {
-        const confirmDelete = window.confirm("Are you sure you want to delete this todo?");
-        if (confirmDelete) {
-            DeleteRecord(id);
-        }
+    const handleCloseModal = () => setDeleteAlert(false);
+    const handleDeleteModal = (id) => {
+        setTodoToDelete(id); // Set the id of the todo to delete
+        const todoToDelete = todos.find(todo => todo._id === id);
+        setDeleteTitle(todoToDelete?.Title);
+        setDeleteAlert(true);
     };
 
     const handleSearch = (e) => {
@@ -63,66 +111,128 @@ function TodoList() {
     }
 
     const handleCheck = (id) => {
-        setTodos(prevTodos => prevTodos.map(todo =>
-            todo._id === id ? { ...todo, isChecked: !todo.isChecked } : todo
-        ));
+        const todoToUpdate = todos.find(todo => todo._id === id);
+        const updatedTodo = { ...todoToUpdate, isChecked: !todoToUpdate.isChecked, isComplete: !todoToUpdate.isChecked };
+        setLoader(true);
+        axios.put(`https://todo-backend-six-jet.vercel.app/todos/update/${id}`, updatedTodo, {
+            headers: {
+                Token: `Bearer ${localStorage.getItem('token')}` // Set Authorization header
+            }
+        })
+        .then(response => {
+            const todoToUpdate = todos.find(todo => todo._id === id);
+            setTodos(prevTodos => prevTodos.map(todo =>
+                todo._id === id ? { ...todo, isChecked: !todo.isChecked, isComplete: !todo.isChecked } : todo
+            ));
+            if (!todoToUpdate.isComplete) {
+                setToastMsg('Todo successfully marked as complete.');
+                setIcon('bi bi-check-circle-fill');
+                setToastBg('success');
+            } else {
+                setToastMsg('Todo successfully unmarked as complete.');
+                setIcon('bi bi-check-circle-fill');
+                setToastBg('warning');
+            }
+            handleShowToast();
+            loadTodos();
+        })
+        .catch(error => {
+            console.error("Error updating todo:", error);
+            setIcon('bi bi-exclamation-triangle-fill')
+        }).finally (() => {
+            setLoader(false)
+        });
     };
 
     const handleSignOut = () => {
         if('username' in cookies){
             removeCookie('username');
+            removeCookie('user-id');
+            localStorage.removeItem('token');
             navigate("/login");
         }
     }
 
+    const handleShowToast = () => {
+        setShowToast(true);
+    };
+    
+    const handleCloseToast = () => {
+        setShowToast(false);
+    };
+
     return (
         <>
             <div>
-                <div>
-                    <nav className="d-flex justify-content-between align-items-center bg-dark text-white p-2">
-                    <Link style={{textDecoration:"none", color:"white"}} to={'/todos'}><h1 className="mx-2 bi bi-pen">TODO's</h1></Link>
-                        <div className="mx-2 d-flex">
-                            <input type="search" className="form-control mx-3" onChange={handleSearch} placeholder="Search here...!" />
-                            <h4 className="me-3">{user}</h4>
-                            <div><button onClick={handleSignOut} className="btn btn-danger">Signout</button></div>
-                        </div>
-                    </nav>
+                <div style={{position: 'relative', marginBottom: '80px', zIndex: 1}}>
+                    <Navbar handleSearch={handleSearch} handleSignOut={handleSignOut} user={user} />
                 </div>
-                <div className="d-flex justify-content-center align-items-center"><h1 className="text-center">Todo's</h1><button className="btn btn-primary bi bi-plus" onClick={handleClick} style={{position:"absolute", right:"100px"}}>Add Todo</button></div>
-                <div className="text-center">
-                    {flag ? (
-                        <div className="todo mt-5 text-danger d-flex justify-content-center align-items-center" style={{height: '75vh' }}>
-                            <div><h1 className="bi bi-exclamation-triangle"> No record found!</h1></div>
-                        </div>
-                    ) : (
-                        <div className="todo mt-5" style={searchKey?{display:'flex', flexDirection:'column',alignItems:'center'}:{display:'grid', gridTemplateColumns: "12fr", justifyItems: 'center', margin:'100px', columnGap:'10px'}}>
-                            {(filteredTodos.length > 0 ? filteredTodos : todos).map(todo =>
-                                <div key={todo._id} className={`card m-1 ${todo.isChecked ? 'bg-success text-white' : ''}`}
-                                    style={searchKey ? { display: 'flex', flexWrap: 'nowrap', width: '30%' } : { width: '100%' }}>
-                                    <div className="card-header d-flex justify-content-center">
-                                        <div style={{ position: "absolute", left: "15px" }}>
-                                            <input onChange={() => handleCheck(todo._id)} className="form-check-input" type="checkbox" checked={todo.isChecked} name={todo.Title} />
-                                            <span>{todo.isChecked ? " Completed" : " Mark as Complete"}</span>
-                                        </div>
-                                        <div><h5>Title: {todo.Title}</h5></div>
-                                        <div style={{ position: "absolute", right: "15px" }}>
+                <div className="container">
+                    <div className="header">
+                        <h1>Todo's</h1>
+                        <button title="Add Todo" className="btn" onClick={handleClick}><i style={{marginTop: '8px'}} className="h1 bi bi-plus-circle-fill"></i></button>
+                    </div>
+                    <div className="card-container">
+                        { todosCheck && todosCheck.length === 0 ? 
+                        (<div className="todo text-danger d-flex justify-content-center align-items-center" style={{height: '50vh' }}>
+                            <h4 className="bi bi-exclamation-triangle"> Your to-do list is empty! Start adding tasks and get organized. </h4>
+                        </div>)
+                        :
+                        flag ? (
+                            <div className="todo text-danger d-flex justify-content-center align-items-center" style={{height: '50vh' }}>
+                                <h4 className="bi bi-exclamation-triangle"> No record found!</h4>
+                            </div>
+                        ) : (
+                            (filteredTodos.length > 0 ? filteredTodos : todos).map(todo =>
+                                <div key={todo._id} className={`card ${todo.isComplete ? 'completed' : ''}`}>
+                                    <div className="card-header">
+                                        <input 
+                                            title="Mark as complete"
+                                            onChange={() => handleCheck(todo._id)} 
+                                            type="checkbox" 
+                                            checked={todo.isChecked} 
+                                        />
+                                        <h5 style={todo.isComplete ? {textDecoration: 'line-through'} : {}}>{todo.Title}</h5>
+                                        {todo.isComplete && <span className="completed-chip">Completed</span>}
+                                        <div className="actions">
                                             <Link to={`/edit-todo/${todo._id}`}>
-                                                <i><span className="bi bi-pen text-warning mx-2"></span></i>
+                                                <i className="bi bi-pen text-warning"></i>
                                             </Link>
-                                            <i type="button" onClick={() => handleDelete(todo._id)}>
-                                                <span className="bi bi-trash text-danger"></span>
-                                            </i>
+                                            <i onClick={() => handleDeleteModal(todo._id)} className="bi bi-trash text-danger"></i>
                                         </div>
                                     </div>
                                     <div className="card-body">
-                                        <h5>Description: {todo.Description}</h5>
+                                        <h5 style={todo.isComplete ? {textDecoration: 'line-through'} : {}}>Description: {todo.Description}</h5>
+                                    </div>
+                                    <div style={todo.isComplete ? {backgroundColor: '#28a745', color: 'white'} : {}} className="card-footer">
+                                        <small>{todo.createdAt === todo.updatedAt ? `Created At:` : `Updated At:`} {new Date(todo.createdAt === todo.updatedAt ? todo.createdAt : todo.updatedAt).toLocaleString()}</small>
+                                        {/* <small>Updated At: {new Date(todo.updatedAt).toLocaleString()}</small> */}
                                     </div>
                                 </div>
-                            )}
-                        </div>
-                    )}
+                            )
+                        )}
+                    </div>
                 </div>
             </div>
+            <BSToast
+                bgColor={toastBg}
+                icon={icon}
+                show={showToast}
+                onClose={handleCloseToast}
+                message={toastMsg}
+            />
+            <CustomModal
+                title={`Delete Todo "${deleteTitle}"?`}
+                showModal={deleteAlert}
+                bodyText={`Are you sure you want to delete this todo "${deleteTitle}"?`}
+                handleClose={handleCloseModal}
+                handleAction1={DeleteRecord}
+                buttonOneName={"Cancel"}
+                buttonTwoName={"Delete"}
+                btnOneVariant={"secondary"}
+                btnTwoVariant={"danger"}
+            />
+            <BackdropSpinner show={loader} onHide={loader} />
         </>
     );
 }
