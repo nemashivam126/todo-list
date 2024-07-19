@@ -21,7 +21,7 @@ const PrivateRoute = ({ children }) => {
         const interceptor = axios.interceptors.response.use(
           (response) => response,
           (error) => {
-            if (error.response && error.response.status === 401) {
+            if (error.response && error.response.status === 403) {
               setShowAlert(true);
             }
             return Promise.reject(error);

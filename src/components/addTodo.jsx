@@ -141,13 +141,6 @@ const AddTodo = () => {
         }
     };
 
-    const handleDelete = (id) => {
-        const confirmDelete = window.confirm("Are you sure you want to delete this todo?");
-        if (confirmDelete) {
-            DeleteRecord(id);
-        }
-    };
-
     const handleCloseModal = () => setDeleteAlert(false);
     const handleDeleteModal = (id) => {
         setTodoToDelete(id); // Set the id of the todo to delete
