@@ -25,13 +25,15 @@ const EditTodo =()=> {
     const handleTitleChange=(e)=>{
         setData((prevdata)=>({
             ...prevdata,
-            Title: e.target.value
+            Title: e.target.value,
+            isComplete: false, 
         }))
     }
     const handleDescChange=(e)=>{
         setData((prevData)=>({
             ...prevData,
-            Description:e.target.value
+            Description:e.target.value,
+            isComplete: false, 
         }))
     }
 
